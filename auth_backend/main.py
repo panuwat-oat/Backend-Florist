@@ -2,7 +2,6 @@ from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
 
-
 from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from jose import JWTError, jwt
@@ -149,26 +148,39 @@ class User_Register(BaseModel):
     first_name: str
     last_name: str
     phone_number: str
-    date_of_birth: datetime
-    disabled: bool
+
+
+"""CREATE TABLE `users` (
+    `user_id` int PRIMARY KEY AUTO_INCREMENT,
+    `username` varchar(255),
+    `email` varchar(255),
+    `first_name` varchar(255),
+    `last_name` varchar(255),
+    `phone_number` varchar(255),
+    `date_of_birth` date,
+    `created_at` datetime,
+    `updated_at` datetime,
+    `role` varchar(255),
+    `password_hash` varchar(255),
+    `disabled` boolean
+);"""
 
 
 @app.post("/api/register", tags=["Auth"])
 async def register_user(user: User_Register):
     mycursor = mydb.cursor()
-    sql = "INSERT INTO users (username, email, first_name, last_name, phone_number, date_of_birth, created_at, updated_at, role, password_hash, disabled) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
+    sql = "INSERT INTO users (username, email, first_name, last_name, phone_number, created_at, updated_at, role, password_hash, disabled) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
     val = (
         user.username,
         user.email,
         user.first_name,
         user.last_name,
         user.phone_number,
-        user.date_of_birth,
         datetime.now(),
         datetime.now(),
         "user",
         get_password_hash(user.password),
-        user.disabled,
+        False,
     )
     mycursor.execute(sql, val)
     mydb.commit()
