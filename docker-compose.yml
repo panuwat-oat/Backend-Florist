@@ -1,0 +1,102 @@
+version: '3.8'
+
+services:
+  mysql:
+    image: mysql:5.7
+    command: --default-authentication-plugin=mysql_native_password
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: flowerstore
+      MYSQL_USER: user
+      MYSQL_PASSWORD: password
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+
+
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin
+    environment:
+      PMA_HOST: mysql
+      PMA_USER: user
+      PMA_PASSWORD: password
+    ports:
+      - "8080:80"
+    depends_on:
+      - mysql
+
+  auth_backend:
+    build: ./auth_backend
+    command: uvicorn main:app --reload --host 0.0.0.0 --port 8000
+    ports:
+      - "8001:8000"
+    depends_on:
+      - mysql
+      - products_backend
+      - addresses_backend
+      - orders_backend
+      - cart_backend
+    volumes:
+      - ./auth_backend:/app/
+
+  
+  products_backend:
+    build: ./products_backend
+    expose:
+      - "80"
+    depends_on:
+      - mysql
+    volumes:
+      - ./products_backend:/app/
+
+
+
+  addresses_backend:
+    build: ./addresses_backend
+    expose:
+      - "80"
+    depends_on:
+      - mysql
+    volumes:
+      - ./addresses_backend:/app/
+
+  orders_backend:
+    build: ./orders_backend
+    expose:
+      - "80"
+    depends_on:
+      - mysql
+    volumes:
+      - ./orders_backend:/app/
+
+
+  cart_backend:
+    build: ./cart_backend
+    expose:
+      - "80"
+    depends_on:
+      - mysql
+    volumes:
+      - ./cart_backend:/app/
+
+
+  nginx:
+    image: nginx:latest
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d
+      - ./nginx/website:/usr/share/nginx/html
+    depends_on:
+      - auth_backend
+      - products_backend
+      - addresses_backend
+      - orders_backend
+      - cart_backend
+
+
+volumes:
+  mysql_data:
+
