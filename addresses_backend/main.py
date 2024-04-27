@@ -1,10 +1,19 @@
 from http.client import HTTPException
-from typing import List, Optional
-from fastapi import FastAPI
-from fastapi.security import OAuth2PasswordBearer
+from typing import Annotated, List, Optional
+from fastapi import Depends, FastAPI, Header, Security
+from fastapi.security import (
+    HTTPAuthorizationCredentials,
+    HTTPBearer,
+    OAuth2,
+    OAuth2AuthorizationCodeBearer,
+    OAuth2PasswordBearer,
+    OAuth2PasswordRequestForm,
+)
+import httpx
 from pydantic import BaseModel
 from fastapi import status
-
+from jose import jwt, JWTError  # type: ignore
+import requests
 
 # import libraries เกี่ยวกับ mysql
 import mysql.connector  # type: ignore
@@ -15,20 +24,11 @@ mydb = mysql.connector.connect(
 )
 
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login")
+app = FastAPI(docs_url="/api/addresses/docs", openapi_url="/api/addresses/openapi.json")
 
-app = FastAPI()
 
-"""CREATE TABLE `addresses` (
-    `address_id` int PRIMARY KEY AUTO_INCREMENT,
-    `user_id` int,
-    `address` varchar(255),
-    `city` varchar(255),
-    `state` varchar(255),
-    `zip_code` varchar(255),
-    `country` varchar(255),
-    `is_current` boolean
-);"""
+class TokenData(BaseModel):
+    username: str | None = None
 
 
 class Address(BaseModel):
@@ -51,13 +51,35 @@ class AddressResponse(BaseModel):
     country: str
     is_current: bool
 
-# เช็คการ Auth ก่อนทุก request โดยเรียกใช้ oauth2_scheme
+
+SECRET_KEY = "florist"
+ALGORITHM = "HS256"
+
+security = HTTPBearer()
+
+
+def get_current_user(credentials: HTTPAuthorizationCredentials = Security(security)):
+    try:
+        payload = jwt.decode(
+            credentials.credentials, SECRET_KEY, algorithms=[ALGORITHM]
+        )
+        username: str = payload.get("sub")
+        if username is None:
+            raise HTTPException(
+                status_code=401, detail="Could not validate credentials"
+            )
+        token_data = TokenData(username=username)
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Could not validate credentials")
+    return token_data
 
 
 @app.post(
-    "/add_address", response_model=AddressResponse, status_code=status.HTTP_201_CREATED
+    "/api/addresses/add_address",
+    response_model=AddressResponse,
+    status_code=status.HTTP_201_CREATED,
 )
-def add_address(address: Address):
+def add_address(address: Address, current_user: TokenData = Depends(get_current_user)):
     # เช็คว่า user_id นี้มีอยู่ในระบบหรือไม่ ถ้าไม่มีให้ return HTTPException 404
     # เช็คว่ามี address ที่เป็น current อยู่แล้วหรือไม่ ถ้ามีให้เปลี่ยนเป็นไม่ใช่
     # เพิ่ม address ใหม่เข้าไป
@@ -91,8 +113,13 @@ def add_address(address: Address):
     return address
 
 
-@app.get("/get_addresses_by_user_id", response_model=List[AddressResponse])
-def get_addresses_by_user_id(user_id: int):
+@app.get(
+    "/api/addresses/get_addresses_by_user_id",
+    response_model=List[AddressResponse],
+)
+def get_addresses_by_user_id(
+    user_id: int, current_user: TokenData = Depends(get_current_user)
+):    
     # ดึงข้อมูล address ทั้งหมดของ user_id นี้ออกมา
     mycursor = mydb.cursor()
     query = "SELECT * FROM addresses WHERE user_id=%s"
@@ -101,8 +128,13 @@ def get_addresses_by_user_id(user_id: int):
     return myresult
 
 
-@app.get("/get_current_address_by_user_id", response_model=AddressResponse)
-def get_current_address_by_user_id(user_id: int):
+@app.get(
+    "/api/addresses/get_current_address_by_user_id", response_model=AddressResponse
+    
+)
+def get_current_address_by_user_id(
+    user_id: int, current_user: TokenData = Depends(get_current_user)
+):
     # ดึงข้อมูล address ที่เป็น current ของ user_id นี้ออกมา
     mycursor = mydb.cursor()
     query = "SELECT * FROM addresses WHERE user_id=%s AND is_current=True"
@@ -112,8 +144,12 @@ def get_current_address_by_user_id(user_id: int):
 
 
 # แก้ไขข้อมูลที่อยู่ด้วย address_id
-@app.put("/edit_address_by_address_id", response_model=AddressResponse)
-def edit_address_by_address_id(address_id: int, address: Address):
+@app.put("/api/addresses/edit_address_by_address_id", response_model=AddressResponse)
+def edit_address_by_address_id(
+    address_id: int,
+    address: Address,
+    current_user: TokenData = Depends(get_current_user),
+):
     # ตรวจสอบว่า address_id นี้มีอยู่ในระบบหรือไม่ ถ้าไม่มีให้ return HTTPException 404
     # ตรวจสอบว่า user_id ของ address_id นี้ตรงกับ user_id ที่ส่งมาหรือไม่ ถ้าไม่ตรงให้ return HTTPException 403
     # แก้ไขข้อมูล address ที่มี address_id นี้
@@ -143,8 +179,13 @@ def edit_address_by_address_id(address_id: int, address: Address):
 
 
 # ลบข้อมูลที่อยู่ด้วย address_id
-@app.delete("/delete_address_by_address_id", status_code=status.HTTP_204_NO_CONTENT)
-def delete_address_by_address_id(address_id: int):
+@app.delete(
+    "/api/addresses/delete_address_by_address_id",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_address_by_address_id(
+    address_id: int, current_user: TokenData = Depends(get_current_user)
+):
     # ตรวจสอบว่า address_id นี้มีอยู่ในระบบหรือไม่ ถ้าไม่มีให้ return HTTPException 404
     # ลบข้อมูล address ที่มี address_id นี้
     mycursor = mydb.cursor()
@@ -160,8 +201,12 @@ def delete_address_by_address_id(address_id: int):
 
 
 # ตั้งค่า address ที่เป็น current ด้วย address_id
-@app.put("/set_current_address_by_address_id", response_model=AddressResponse)
-def set_current_address_by_address_id(address_id: int):
+@app.put(
+    "/api/addresses/set_current_address_by_address_id", response_model=AddressResponse
+)
+def set_current_address_by_address_id(
+    address_id: int, current_user: TokenData = Depends(get_current_user)
+):
     # ตรวจสอบว่า address_id นี้มีอยู่ในระบบหรือไม่ ถ้าไม่มีให้ return HTTPException 404
     mycursor = mydb.cursor()
     query = "SELECT * FROM addresses WHERE address_id=%s"

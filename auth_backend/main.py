@@ -4,14 +4,14 @@ from typing import Annotated
 
 from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from jose import JWTError, jwt
+from jose import JWTError, jwt  # type: ignore
 from passlib.context import CryptContext
 from pydantic import BaseModel
 
 import requests
 
 # import libraries เกี่ยวกับ mysql
-import mysql.connector
+import mysql.connector  # type: ignore
 
 
 # to get a string like this run:
@@ -49,7 +49,7 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login")
 
-app = FastAPI(openapi_url="/api/openapi.json", docs_url="/api/docs")
+app = FastAPI(openapi_url="/api/auth/openapi.json", docs_url="/api/auth/docs")
 
 
 def verify_password(plain_password, password_hash):
@@ -150,22 +150,6 @@ class User_Register(BaseModel):
     phone_number: str
 
 
-"""CREATE TABLE `users` (
-    `user_id` int PRIMARY KEY AUTO_INCREMENT,
-    `username` varchar(255),
-    `email` varchar(255),
-    `first_name` varchar(255),
-    `last_name` varchar(255),
-    `phone_number` varchar(255),
-    `date_of_birth` date,
-    `created_at` datetime,
-    `updated_at` datetime,
-    `role` varchar(255),
-    `password_hash` varchar(255),
-    `disabled` boolean
-);"""
-
-
 @app.post("/api/register", tags=["Auth"])
 async def register_user(user: User_Register):
     mycursor = mydb.cursor()
@@ -192,20 +176,3 @@ async def read_users_me(
     current_user: Annotated[User, Depends(get_current_active_user)]
 ):
     return current_user
-
-
-from product import router as products_router
-
-app.include_router(products_router, tags=["Products"], prefix="/api/products")
-
-from orders import router as orders_router
-
-app.include_router(orders_router, tags=["Orders"], prefix="/api/orders")
-
-from addresses import router as addresses_router
-
-app.include_router(addresses_router, tags=["Addresses"], prefix="/api/addresses")
-
-from cart import router as cart_router
-
-app.include_router(cart_router, tags=["Cart"], prefix="/api/cart")

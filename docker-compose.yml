@@ -29,9 +29,8 @@ services:
 
   auth_backend:
     build: ./auth_backend
-    command: uvicorn main:app --reload --host 0.0.0.0 --port 8000
-    ports:
-      - "8001:8000"
+    command: uvicorn main:app --reload --host 0.0.0.0 --port 80
+
     depends_on:
       - mysql
       - products_backend
@@ -40,6 +39,15 @@ services:
       - cart_backend
     volumes:
       - ./auth_backend:/app/
+
+  addresses_backend:
+    build: ./addresses_backend
+    expose:
+      - "80"
+    depends_on:
+      - mysql
+    volumes:
+      - ./addresses_backend:/app/
 
   
   products_backend:
@@ -53,14 +61,8 @@ services:
 
 
 
-  addresses_backend:
-    build: ./addresses_backend
-    expose:
-      - "80"
-    depends_on:
-      - mysql
-    volumes:
-      - ./addresses_backend:/app/
+
+
 
   orders_backend:
     build: ./orders_backend

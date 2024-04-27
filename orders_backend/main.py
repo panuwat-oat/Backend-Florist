@@ -1,7 +1,7 @@
 from http.client import HTTPException
 from typing import List, Optional
-from fastapi import FastAPI
-from fastapi.security import OAuth2PasswordBearer
+from fastapi import Depends, FastAPI, Security
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer, OAuth2PasswordBearer
 from pydantic import BaseModel
 from fastapi import status
 
@@ -15,9 +15,36 @@ mydb = mysql.connector.connect(
 )
 
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login")
+from jose import jwt, JWTError  # type: ignore
 
-app = FastAPI()
+
+SECRET_KEY = "florist"
+ALGORITHM = "HS256"
+
+security = HTTPBearer()
+
+
+class TokenData(BaseModel):
+    username: str | None = None
+
+
+def get_current_user(credentials: HTTPAuthorizationCredentials = Security(security)):
+    try:
+        payload = jwt.decode(
+            credentials.credentials, SECRET_KEY, algorithms=[ALGORITHM]
+        )
+        username: str = payload.get("sub")
+        if username is None:
+            raise HTTPException(
+                status_code=401, detail="Could not validate credentials"
+            )
+        token_data = TokenData(username=username)
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Could not validate credentials")
+    return token_data
+
+
+app = FastAPI(docs_url="/api/orders/docs", openapi_url="/api/orders/openapi.json")
 
 """
 CREATE TABLE `orders` (
@@ -74,9 +101,9 @@ class OrderResponse(BaseModel):
 
 # สร้าง order ใหม่
 @app.post(
-    "/add_order", response_model=OrderResponse, status_code=status.HTTP_201_CREATED
+    "/api/orders/add_order", response_model=OrderResponse, status_code=status.HTTP_201_CREATED
 )
-def add_order(order: Order):
+def add_order(order: Order, current_user: TokenData = Depends(get_current_user)):
     mycursor = mydb.cursor()
     sql = "INSERT INTO orders (user_id, address_id, order_date, status, total_price) VALUES (%s, %s, %s, %s, %s)"
     values = (
@@ -104,8 +131,8 @@ def add_order(order: Order):
 
 
 # ดึง order ทั้งหมด
-@app.get("/get_orders_all", response_model=List[OrderResponse])
-def get_orders_all():
+@app.get("/api/orders/get_orders_all", response_model=List[OrderResponse])
+def get_orders_all( current_user: TokenData = Depends(get_current_user)):
     mycursor = mydb.cursor()
     mycursor.execute("SELECT * FROM orders")
     myresult = mycursor.fetchall()
@@ -150,8 +177,10 @@ def get_orders_all():
 
 
 # ดึง order ทั้งหมดของ user_id นี้
-@app.get("/get_order_by_user_id", response_model=List[OrderResponse])
-def get_order_by_user_id(user_id: int):
+@app.get("/api/orders/get_order_by_user_id", response_model=List[OrderResponse])
+def get_order_by_user_id(
+    user_id: int, current_user: TokenData = Depends(get_current_user)
+):
     mycursor = mydb.cursor()
     query = "SELECT * FROM orders WHERE user_id=%s"
     mycursor.execute(query, (user_id,))
@@ -197,8 +226,10 @@ def get_order_by_user_id(user_id: int):
 
 
 # ดึง order ทั้งหมดของ user_id นี้ที่มี status เป็น status
-@app.get("/get_order_by_user_id_and_status", response_model=List[OrderResponse])
-def get_order_by_user_id_and_status(user_id: int, status: str):
+@app.get("/api/orders/get_order_by_user_id_and_status", response_model=List[OrderResponse])
+def get_order_by_user_id_and_status(
+    user_id: int, status: str, current_user: TokenData = Depends(get_current_user)
+):
     mycursor = mydb.cursor()
     query = "SELECT * FROM orders WHERE user_id=%s AND status=%s"
     mycursor.execute(query, (user_id, status))
@@ -244,8 +275,10 @@ def get_order_by_user_id_and_status(user_id: int, status: str):
 
 
 # แก้ไข Status ของ order ที่ order_id นี้
-@app.put("/edit_order_status", response_model=OrderResponse)
-def edit_order_status(order_id: int, status: str):
+@app.put("/api/orders/edit_order_status", response_model=OrderResponse)
+def edit_order_status(
+    order_id: int, status: str, current_user: TokenData = Depends(get_current_user)
+):
     mycursor = mydb.cursor()
     query = "SELECT * FROM orders WHERE order_id=%s"
     mycursor.execute(query, (order_id,))
