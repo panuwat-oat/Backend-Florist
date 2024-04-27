@@ -1,6 +1,7 @@
 from http.client import HTTPException
+import shutil
 from typing import Annotated, List, Optional
-from fastapi import Depends, FastAPI, Query, Security
+from fastapi import Depends, FastAPI, File, Form, Query, Security, UploadFile
 from fastapi.security import (
     HTTPAuthorizationCredentials,
     HTTPBearer,
@@ -39,7 +40,7 @@ if not os.path.exists("images"):
 
 
 app.mount(
-    "/images",
+    "/api/products/images",
     app=StaticFiles(directory="images"),
     name="images",
 )
@@ -134,18 +135,27 @@ def add_product(product: Product, current_user: TokenData = Depends(get_current_
         raise HTTPException(status_code=400, detail=str(e))
 
 
-# add picture to product
 @app.post("/api/products/add_product_image")
 def add_product_image(
-    file: bytes = Annotated[bytes, "file"],
-    product_id: int = Annotated[int, "product_id"],
+    file: UploadFile = File(...),
+    product_id: int = Form(...),
     current_user: TokenData = Depends(get_current_user),
 ):
     try:
         # อัพโหลดไฟล์ไปยัง server
-        with open(f"images/{product_id}.jpg", "wb") as f:
-            f.write(file)
-        return {"message": "Image uploaded successfully"}
+        # Note: You might want to add validation to check file content type, etc.
+        file_location = f"images/{product_id}.jpg"
+        with open(file_location, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        # อัพเดท product_image ในตาราง products
+        mycursor = mydb.cursor()
+        sql = "UPDATE products SET product_image = %s WHERE product_id = %s"
+        file_location = f"api/products/images/{product_id}.jpg"
+        values = (file_location, product_id)
+        mycursor.execute(sql, values)
+        mydb.commit()
+        
+        return {"message": "Image uploaded successfully", "file_path": file_location}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
