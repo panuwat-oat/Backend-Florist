@@ -154,7 +154,7 @@ def add_product_image(
         values = (file_location, product_id)
         mycursor.execute(sql, values)
         mydb.commit()
-        
+
         return {"message": "Image uploaded successfully", "file_path": file_location}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -207,3 +207,56 @@ def delete_category(
     except Exception as e:
         mydb.rollback()
         raise HTTPException(status_code=400, detail=str(e))
+
+
+import requests
+import IPython
+
+
+# get products description with text to speech
+@app.get("/api/products/get_product_description_tts")
+def get_product_description_tts(
+    product_id: int = Query(...), current_user: TokenData = Depends(get_current_user)
+):
+    mycursor = mydb.cursor()
+    query = "SELECT description FROM products WHERE product_id = %s"
+    mycursor.execute(query, (product_id,))
+    myresult = mycursor.fetchone()
+    if myresult is None:
+        raise HTTPException(status_code=404, detail="Product not found")
+    description = myresult[0]
+
+    # Define the path for the audio file
+    audio_file_path = f"images/product_{product_id}_audio.wav"
+
+    # Check if the audio file already exists
+    if os.path.exists(audio_file_path):
+        return {"message": "Audio already generated", "file_path": audio_file_path}
+
+    # API key for the text-to-speech service
+    Apikey = "NMhdHNIpPJpc0nUKcn1asmqIPBqUuT9I"
+
+    # Text-to-speech synthesis
+    url = "https://api.aiforthai.in.th/vaja9/synth_audiovisual"
+    headers = {"Apikey": Apikey, "Content-Type": "application/json"}
+    data = {
+        "input_text": description,
+        "speaker": 1,
+        "phrase_break": 0,
+        "audiovisual": 0,
+    }
+    response = requests.post(url, json=data, headers=headers)
+
+    # Check the response
+    if response.status_code != 200 or "wav_url" not in response.json():
+        raise HTTPException(status_code=500, detail="Failed to generate audio")
+
+    # Download the audio file
+    audio_url = response.json()["wav_url"]
+    resp = requests.get(audio_url, headers={"Apikey": Apikey})
+    if resp.status_code == 200:
+        with open(audio_file_path, "wb") as f:
+            f.write(resp.content)
+        return {"message": "Audio generated successfully", "file_path": audio_file_path}
+    else:
+        raise HTTPException(status_code=500, detail="Failed to download audio")
