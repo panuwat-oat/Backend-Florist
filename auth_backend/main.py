@@ -8,6 +8,7 @@ from jose import JWTError, jwt  # type: ignore
 from passlib.context import CryptContext
 from pydantic import BaseModel
 
+
 import requests
 
 # import libraries เกี่ยวกับ mysql
@@ -50,6 +51,18 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login")
 
 app = FastAPI(openapi_url="/api/auth/openapi.json", docs_url="/api/auth/docs")
+
+from fastapi.middleware.cors import CORSMiddleware
+
+origins = ["*"]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 def verify_password(plain_password, password_hash):

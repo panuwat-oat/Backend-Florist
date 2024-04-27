@@ -25,7 +25,17 @@ mydb = mysql.connector.connect(
 
 
 app = FastAPI(docs_url="/api/addresses/docs", openapi_url="/api/addresses/openapi.json")
+from fastapi.middleware.cors import CORSMiddleware
 
+origins = ["*"]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 class TokenData(BaseModel):
     username: str | None = None

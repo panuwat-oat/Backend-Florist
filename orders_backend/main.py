@@ -46,24 +46,17 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Security(securi
 
 app = FastAPI(docs_url="/api/orders/docs", openapi_url="/api/orders/openapi.json")
 
-"""
-CREATE TABLE `orders` (
-    `order_id` int PRIMARY KEY AUTO_INCREMENT,
-    `user_id` int,
-    `address_id` int,
-    `order_date` datetime,
-    `status` varchar(255),
-    `total_price` decimal
-);
+from fastapi.middleware.cors import CORSMiddleware
 
-CREATE TABLE `order_items` (
-    `order_item_id` int PRIMARY KEY AUTO_INCREMENT,
-    `order_id` int,
-    `product_id` int,
-    `quantity` int,
-    `price_per_unit` decimal
-);
-"""
+origins = ["*"]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 class OrderItem(BaseModel):

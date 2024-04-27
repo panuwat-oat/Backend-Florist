@@ -48,7 +48,17 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Security(securi
 
 app = FastAPI(docs_url="/api/cart/docs", openapi_url="/api/cart/openapi.json")
 
+from fastapi.middleware.cors import CORSMiddleware
 
+origins = ["*"]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 class CartItem(BaseModel):
     product_id: int
     quantity: int
