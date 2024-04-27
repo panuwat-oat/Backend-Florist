@@ -31,9 +31,19 @@ ALGORITHM = "HS256"
 
 security = HTTPBearer()
 
+# เช็คว่ามี โฟลเดอร์ images หรือไม่ ถ้าไม่มีให้สร้างโฟลเดอร์ images
+import os
 
-# static files
-@app.mount("/images", app=StaticFiles(directory="images"), name="images")
+if not os.path.exists("images"):
+    os.makedirs("images")
+
+
+app.mount(
+    "/images",
+    app=StaticFiles(directory="images"),
+    name="images",
+)
+
 
 class TokenData(BaseModel):
     username: str | None = None
