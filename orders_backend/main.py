@@ -1,7 +1,10 @@
-
 from typing import List, Optional
 from fastapi import Depends, FastAPI, HTTPException, Security
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer, OAuth2PasswordBearer
+from fastapi.security import (
+    HTTPAuthorizationCredentials,
+    HTTPBearer,
+    OAuth2PasswordBearer,
+)
 from pydantic import BaseModel
 from fastapi import status
 
@@ -94,7 +97,9 @@ class OrderResponse(BaseModel):
 
 # สร้าง order ใหม่
 @app.post(
-    "/api/orders/add_order", response_model=OrderResponse, status_code=status.HTTP_201_CREATED
+    "/api/orders/add_order",
+    response_model=OrderResponse,
+    status_code=status.HTTP_201_CREATED,
 )
 def add_order(order: Order, current_user: TokenData = Depends(get_current_user)):
     mycursor = mydb.cursor()
@@ -125,7 +130,7 @@ def add_order(order: Order, current_user: TokenData = Depends(get_current_user))
 
 # ดึง order ทั้งหมด
 @app.get("/api/orders/get_orders_all", response_model=List[OrderResponse])
-def get_orders_all( current_user: TokenData = Depends(get_current_user)):
+def get_orders_all(current_user: TokenData = Depends(get_current_user)):
     mycursor = mydb.cursor()
     mycursor.execute("SELECT * FROM orders")
     myresult = mycursor.fetchall()
@@ -219,7 +224,9 @@ def get_order_by_user_id(
 
 
 # ดึง order ทั้งหมดของ user_id นี้ที่มี status เป็น status
-@app.get("/api/orders/get_order_by_user_id_and_status", response_model=List[OrderResponse])
+@app.get(
+    "/api/orders/get_order_by_user_id_and_status", response_model=List[OrderResponse]
+)
 def get_order_by_user_id_and_status(
     user_id: int, status: str, current_user: TokenData = Depends(get_current_user)
 ):

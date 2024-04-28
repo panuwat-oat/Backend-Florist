@@ -59,14 +59,37 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
 class CartItem(BaseModel):
-    product_id: int
     quantity: int
+    product_id: int
 
 
 class Cart(BaseModel):
     user_id: int
     items: List[CartItem] = []
+
+
+class Product(BaseModel):
+    product_id: int
+    category_id: int
+    name: str
+    description: str
+    price: float
+    product_image: str
+
+
+class CartItemWithProduct(BaseModel):
+    quantity: int
+    product: Product
+
+
+def get_product_details(product_id: int):
+    mycursor = mydb.cursor(dictionary=True)
+    query = "SELECT * FROM products WHERE product_id = %s"
+    mycursor.execute(query, (product_id,))
+    return mycursor.fetchone()
 
 
 @app.post("/api/cart/add_to_cart", status_code=status.HTTP_201_CREATED)
@@ -97,16 +120,38 @@ def add_to_cart(cart: Cart, current_user: TokenData = Depends(get_current_user))
     return {"message": "Added to cart successfully"}
 
 
-@app.get("/api/cart/get_cart_pagination", response_model=List[CartItem])
+@app.get("/api/cart/get_cart_pagination")
 def get_cart(
     user_id: int,
     page: int = 1,
     limit: int = 10,
-    current_user: TokenData = Depends(get_current_user),
 ):
-    mycursor = mydb.cursor()
-    query = "SELECT * FROM cart_items WHERE cart_id=%s"
-    query += " LIMIT %s OFFSET %s"
+    mycursor = mydb.cursor(dictionary=True)
+    query = """
+    SELECT cart_items.product_id, cart_items.quantity, products.category_id, products.name, 
+           products.description, products.price, products.product_image
+    FROM cart_items 
+    JOIN products ON cart_items.product_id = products.product_id
+    WHERE cart_items.cart_id = %s LIMIT %s OFFSET %s
+    """
     mycursor.execute(query, (user_id, limit, (page - 1) * limit))
-    myresult = mycursor.fetchall()
-    return myresult
+    items = mycursor.fetchall()
+
+    cart_items_with_products = [
+        CartItemWithProduct(quantity=item["quantity"], product=Product(**item))
+        for item in items
+    ]
+
+    # Get total count of items in the cart for pagination
+    query = "SELECT COUNT(*) FROM cart_items WHERE cart_id = %s"
+    mycursor.execute(query, (user_id,))
+    total_count = mycursor.fetchone()["COUNT(*)"]
+    total_pages = (total_count + limit - 1) // limit  # Ceiling division
+
+    return {
+        "items": cart_items_with_products,
+        "current_page": page,
+        "total_pages": total_pages,
+        "total_items": total_count,
+        "limit": limit,
+    }

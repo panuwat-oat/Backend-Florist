@@ -62,7 +62,7 @@ class TokenData(BaseModel):
     username: str | None = None
 
 
-from jose import ExpiredSignatureError
+from jose import ExpiredSignatureError  # type: ignore
 
 
 def get_current_user(credentials: HTTPAuthorizationCredentials = Security(security)):
@@ -101,27 +101,7 @@ class Product(BaseModel):
     product_image: str
 
 
-@app.get("/api/products/get_all_products", response_model=List[ProductResponse])
-def get_all_products():
-    mycursor = mydb.cursor()
-    mycursor.execute("SELECT * FROM products")
-    myresult = mycursor.fetchall()
-    products = [
-        {
-            "product_id": product[0],
-            "category_id": product[1],
-            "name": product[2],
-            "description": product[3],
-            "price": product[4],
-            "stock_quantity": product[5],
-            "product_image": product[6],
-        }
-        for product in myresult
-    ]
-    return products
-
-
-@app.get("/api/products/get_products", response_model=List[ProductResponse])
+@app.get("/api/products/get_products")
 def get_products(
     category_id: Optional[int] = None,
     page: int = 1,
@@ -150,7 +130,24 @@ def get_products(
         }
         for product in myresult
     ]
-    return products
+
+    # Get total count of items in the products table
+    if category_id is not None:
+        mycursor.execute(
+            "SELECT COUNT(*) FROM products WHERE category_id=%s", (category_id,)
+        )
+    else:
+        mycursor.execute("SELECT COUNT(*) FROM products")
+    total_count = mycursor.fetchone()[0]
+    total_pages = (total_count + limit - 1) // limit
+
+    return {
+        "items": products,
+        "current_page": page,
+        "total_pages": total_pages,
+        "total_items": total_count,
+        "limit": limit,
+    }
 
 
 # post new product with better error handling and status codes
