@@ -155,3 +155,14 @@ def get_cart(
         "total_items": total_count,
         "limit": limit,
     }
+
+@app.delete("/api/cart/delete_cart_item")
+def delete_cart_item(
+    user_id: int,
+    product_id: int,
+):
+    mycursor = mydb.cursor()
+    query = "DELETE FROM cart_items WHERE cart_id=%s AND product_id=%s"
+    mycursor.execute(query, (user_id, product_id))
+    mydb.commit()
+    return {"message": "Deleted cart item successfully"}
