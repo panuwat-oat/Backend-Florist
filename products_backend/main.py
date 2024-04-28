@@ -102,7 +102,7 @@ class Product(BaseModel):
 
 
 @app.get("/api/products/get_all_products", response_model=List[ProductResponse])
-def get_all_products(current_user: TokenData = Depends(get_current_user)):
+def get_all_products():
     mycursor = mydb.cursor()
     mycursor.execute("SELECT * FROM products")
     myresult = mycursor.fetchall()
@@ -114,7 +114,6 @@ def get_products(
     category_id: Optional[int] = None,
     page: int = 1,
     limit: int = 10,
-    current_user: TokenData = Depends(get_current_user),
 ):
     mycursor = mydb.cursor()
     query = "SELECT * FROM products"
@@ -190,7 +189,7 @@ class CategoryResponse(BaseModel):
 
 
 @app.get("/api/products/get_all_categories")
-def get_all_categories(current_user: TokenData = Depends(get_current_user)):
+def get_all_categories():
     mycursor = mydb.cursor()
     mycursor.execute("SELECT * FROM categories")
     myresult = mycursor.fetchall()
@@ -236,7 +235,7 @@ import IPython
 # get products description with text to speech
 @app.get("/api/products/get_product_description_tts")
 def get_product_description_tts(
-    product_id: int = Query(...), current_user: TokenData = Depends(get_current_user)
+    product_id: int = Query(...),
 ):
     mycursor = mydb.cursor()
     query = "SELECT description FROM products WHERE product_id = %s"
