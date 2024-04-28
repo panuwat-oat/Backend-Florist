@@ -106,7 +106,19 @@ def get_all_products():
     mycursor = mydb.cursor()
     mycursor.execute("SELECT * FROM products")
     myresult = mycursor.fetchall()
-    return myresult
+    products = [
+        {
+            "product_id": product[0],
+            "category_id": product[1],
+            "name": product[2],
+            "description": product[3],
+            "price": product[4],
+            "stock_quantity": product[5],
+            "product_image": product[6],
+        }
+        for product in myresult
+    ]
+    return products
 
 
 @app.get("/api/products/get_products", response_model=List[ProductResponse])
@@ -125,7 +137,20 @@ def get_products(
         query += " LIMIT %s OFFSET %s"
         mycursor.execute(query, (limit, (page - 1) * limit))
     myresult = mycursor.fetchall()
-    return myresult
+
+    products = [
+        {
+            "product_id": product[0],
+            "category_id": product[1],
+            "name": product[2],
+            "description": product[3],
+            "price": product[4],
+            "stock_quantity": product[5],
+            "product_image": product[6],
+        }
+        for product in myresult
+    ]
+    return products
 
 
 # post new product with better error handling and status codes
@@ -188,12 +213,16 @@ class CategoryResponse(BaseModel):
     name: str
 
 
-@app.get("/api/products/get_all_categories")
+@app.get("/api/products/get_all_categories", response_model=List[CategoryResponse])
 def get_all_categories():
     mycursor = mydb.cursor()
     mycursor.execute("SELECT * FROM categories")
     myresult = mycursor.fetchall()
-    return myresult
+    # Convert tuple results to dictionary format expected by the Pydantic model
+    categories = [
+        {"category_id": category[0], "name": category[1]} for category in myresult
+    ]
+    return categories
 
 
 @app.post("/api/products/add_category")
