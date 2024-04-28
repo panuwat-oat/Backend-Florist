@@ -2,3 +2,4 @@
 /mysql_data
 /auth_backend/__pycache__
 /auth_backend/__pycache__
+*.pyc
