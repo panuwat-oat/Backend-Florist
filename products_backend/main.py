@@ -141,7 +141,10 @@ def add_product(product: Product, current_user: TokenData = Depends(get_current_
         )
         mycursor.execute(sql, values)
         mydb.commit()
-        return {"message": "Product added successfully"}
+        return {
+            "message": "Product added successfully",
+            "product_id": mycursor.lastrowid,
+        }
     except Exception as e:
         mydb.rollback()
         raise HTTPException(status_code=400, detail=str(e))
