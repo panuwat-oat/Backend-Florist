@@ -1,6 +1,6 @@
-from http.client import HTTPException
+
 from typing import List, Optional
-from fastapi import Depends, FastAPI, Security
+from fastapi import Depends, FastAPI, HTTPException, Security
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer, OAuth2PasswordBearer
 from pydantic import BaseModel
 from fastapi import status

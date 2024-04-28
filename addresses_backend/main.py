@@ -1,6 +1,6 @@
-from http.client import HTTPException
+
 from typing import Annotated, List, Optional
-from fastapi import Depends, FastAPI, Header, Security
+from fastapi import Depends, FastAPI, HTTPException, Header, Security
 from fastapi.security import (
     HTTPAuthorizationCredentials,
     HTTPBearer,

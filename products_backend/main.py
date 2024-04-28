@@ -1,4 +1,4 @@
-from http.client import HTTPException
+from fastapi import HTTPException
 import shutil
 from typing import Annotated, List, Optional
 from fastapi import Depends, FastAPI, File, Form, Query, Security, UploadFile
@@ -62,6 +62,9 @@ class TokenData(BaseModel):
     username: str | None = None
 
 
+from jose import ExpiredSignatureError
+
+
 def get_current_user(credentials: HTTPAuthorizationCredentials = Security(security)):
     try:
         payload = jwt.decode(
@@ -72,10 +75,11 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Security(securi
             raise HTTPException(
                 status_code=401, detail="Could not validate credentials"
             )
-        token_data = TokenData(username=username)
+    except ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token has expired")
     except JWTError:
         raise HTTPException(status_code=401, detail="Could not validate credentials")
-    return token_data
+    return TokenData(username=username)
 
 
 class ProductResponse(BaseModel):
@@ -128,6 +132,7 @@ def get_products(
 # post new product with better error handling and status codes
 @app.post("/api/products/add_product", status_code=status.HTTP_201_CREATED)
 def add_product(product: Product, current_user: TokenData = Depends(get_current_user)):
+
     try:
         mycursor = mydb.cursor()
         sql = "INSERT INTO products (category_id, name, description, price, stock_quantity, product_image) VALUES (%s, %s, %s, %s, %s, %s)"
