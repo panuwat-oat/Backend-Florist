@@ -163,7 +163,7 @@ class User_Register(BaseModel):
     phone_number: str
 
 
-@app.post("/api/register", tags=["Auth"])
+@app.post("/api/auth/register", tags=["Auth"])
 async def register_user(user: User_Register):
     mycursor = mydb.cursor()
     sql = "INSERT INTO users (username, email, first_name, last_name, phone_number, created_at, updated_at, role, password_hash, disabled) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
@@ -184,7 +184,7 @@ async def register_user(user: User_Register):
     return {"message": "User created successfully"}
 
 
-@app.get("/api/me", tags=["Auth"])
+@app.get("/api/auth/me", tags=["Auth"])
 async def read_users_me(
     current_user: Annotated[User, Depends(get_current_active_user)]
 ):
