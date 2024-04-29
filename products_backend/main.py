@@ -114,24 +114,60 @@ def add_product(product: Product, current_user: TokenData = Depends(get_current_
         )
         connection.commit()
         product_id = cursor.lastrowid
-        
+
         return {**product.dict(), "product_id": product_id}
     finally:
         cursor.close()
         connection.close()
 
 
-@app.get("/api/products/get_products", response_model=List[ProductResponse])
-def get_products(category_id: Optional[int] = None):
+@app.get("/api/products/get_products", response_model=dict)
+def get_products(
+    category_id: Optional[int] = Query(None),
+    page: int = Query(1),
+    limit: int = Query(10),
+):
     connection = get_db_connection()
     cursor = connection.cursor(dictionary=True)
     try:
-        query = "SELECT p.*, c.name AS category_name FROM products p LEFT JOIN categories c ON p.category_id = c.category_id"
+        query_base = """
+        SELECT p.product_id, p.category_id, c.name AS category_name, p.name, p.description, 
+               p.price, p.stock_quantity, p.product_image
+        FROM products p
+        LEFT JOIN categories c ON p.category_id = c.category_id
+        """
         if category_id:
-            cursor.execute(query + " WHERE p.category_id = %s", (category_id,))
+            query_base += " WHERE p.category_id = %s"
+
+        # Prepare the query for pagination
+        query_pagination = query_base + " LIMIT %s OFFSET %s"
+        offset = (page - 1) * limit
+        if category_id:
+            cursor.execute(query_pagination, (category_id, limit, offset))
         else:
-            cursor.execute(query)
-        return cursor.fetchall()
+            cursor.execute(query_pagination, (limit, offset))
+
+        products = cursor.fetchall()
+
+        # Calculate total items and pages
+        if category_id:
+            cursor.execute(
+                "SELECT COUNT(*) FROM products WHERE category_id = %s", (category_id,)
+            )
+        else:
+            cursor.execute("SELECT COUNT(*) FROM products")
+
+        total_items = cursor.fetchone()["COUNT(*)"]
+        total_pages = (
+            total_items + limit - 1
+        ) // limit  # This calculates the ceiling of the division
+
+        return {
+            "items": products,
+            "limit": limit,
+            "total_items": total_items,
+            "total_pages": total_pages,
+        }
     finally:
         cursor.close()
         connection.close()
