@@ -1,5 +1,5 @@
-from typing import List, Optional
-from fastapi import Depends, FastAPI, HTTPException, Security
+from typing import Any, Dict, List, Optional
+from fastapi import Depends, FastAPI, HTTPException, Query, Security
 from fastapi.security import (
     HTTPAuthorizationCredentials,
     HTTPBearer,
@@ -123,33 +123,52 @@ def add_to_cart(cart: Cart, current_user: TokenData = Depends(get_current_user))
     return {"message": "Added to cart successfully"}
 
 
-@app.get("/api/cart/get_cart_pagination")
+@app.get("/api/cart/get_cart_pagination", response_model=Dict[str, Any])
 def get_cart(
-    user_id: int,
-    page: int = 1,
-    limit: int = 10,
+    user_id: int = Query(
+        ..., description="The ID of the user whose cart items are to be retrieved"
+    ),
+    page: int = Query(1, description="Page number of the pagination"),
+    limit: int = Query(10, description="Number of items per page"),
     current_user: TokenData = Depends(get_current_user),
 ):
     mycursor = mydb.cursor(dictionary=True)
+    offset = (page - 1) * limit
     query = """
-    SELECT cart_items.product_id, cart_items.quantity, products.category_id, products.name, 
-           products.description, products.price, products.product_image
-    FROM cart_items 
-    JOIN products ON cart_items.product_id = products.product_id
-    WHERE cart_items.cart_id = %s LIMIT %s OFFSET %s
+    SELECT ci.quantity, p.product_id, p.category_id, p.name, 
+           p.description, p.price, p.product_image
+    FROM cart c
+    JOIN cart_items ci ON c.cart_id = ci.cart_id
+    JOIN products p ON ci.product_id = p.product_id
+    WHERE c.user_id = %s LIMIT %s OFFSET %s
     """
-    mycursor.execute(query, (user_id, limit, (page - 1) * limit))
+    mycursor.execute(query, (user_id, limit, offset))
     items = mycursor.fetchall()
 
     cart_items_with_products = [
-        CartItemWithProduct(quantity=item["quantity"], product=Product(**item))
+        {
+            "quantity": item["quantity"],
+            "product": {
+                "product_id": item["product_id"],
+                "category_id": item["category_id"],
+                "name": item["name"],
+                "description": item["description"],
+                "price": item["price"],
+                "product_image": item["product_image"],
+            },
+        }
         for item in items
     ]
 
     # Get total count of items in the cart for pagination
-    query = "SELECT COUNT(*) FROM cart_items WHERE cart_id = %s"
+    query = """
+    SELECT COUNT(*) as count
+    FROM cart_items ci
+    JOIN cart c ON ci.cart_id = c.cart_id
+    WHERE c.user_id = %s
+    """
     mycursor.execute(query, (user_id,))
-    total_count = mycursor.fetchone()["COUNT(*)"]
+    total_count = mycursor.fetchone()["count"]
     total_pages = (total_count + limit - 1) // limit  # Ceiling division
 
     return {
