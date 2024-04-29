@@ -50,8 +50,17 @@ class OrderItem(BaseModel):
     price_per_unit: float
 
 
+class ProductDetails(BaseModel):
+    name: str
+    description: Optional[str]
+    price: float
+    category_id: Optional[int]
+    product_image: Optional[str]
+
+
 class OrderItemResponse(OrderItem):
     order_item_id: int
+    product_details: ProductDetails
 
 
 class Order(BaseModel):
@@ -88,12 +97,15 @@ from datetime import datetime
 
 
 def fetch_order_details(cursor, order_id):
-    # Fetch order items
+    # Fetch order items with product details
     cursor.execute(
         """
-        SELECT order_items.order_item_id, order_items.product_id, order_items.quantity, order_items.price_per_unit 
-        FROM order_items WHERE order_id = %s
-    """,
+        SELECT oi.order_item_id, oi.product_id, oi.quantity, oi.price_per_unit,
+               p.name, p.description, p.price, p.category_id, p.product_image
+        FROM order_items oi
+        JOIN products p ON oi.product_id = p.product_id
+        WHERE oi.order_id = %s
+        """,
         (order_id,),
     )
     items = cursor.fetchall()
@@ -103,26 +115,26 @@ def fetch_order_details(cursor, order_id):
             product_id=item["product_id"],
             quantity=item["quantity"],
             price_per_unit=item["price_per_unit"],
+            product_details=ProductDetails(
+                name=item["name"],
+                description=item["description"],
+                price=item["price"],
+                category_id=item["category_id"],
+                product_image=item["product_image"],
+            ),
         )
         for item in items
     ]
 
     # Fetch the order itself
-    cursor.execute(
-        """
-        SELECT * FROM orders WHERE order_id = %s
-    """,
-        (order_id,),
-    )
+    cursor.execute("SELECT * FROM orders WHERE order_id = %s", (order_id,))
     order = cursor.fetchone()
 
     return OrderResponse(
         order_id=order["order_id"],
         user_id=order["user_id"],
         address_id=order["address_id"],
-        order_date=order["order_date"].strftime(
-            "%Y-%m-%d %H:%M:%S"
-        ),  # Convert datetime to string
+        order_date=order["order_date"].strftime("%Y-%m-%d %H:%M:%S"),
         status=order["status"],
         total_price=float(order["total_price"]),
         order_items=order_items,
