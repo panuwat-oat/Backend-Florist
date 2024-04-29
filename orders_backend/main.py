@@ -70,19 +70,19 @@ class OrderResponse(Order):
 
 # Security dependency
 def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
-    # try:
-    #     payload = jwt.decode(
-    #         credentials.credentials, SECRET_KEY, algorithms=[ALGORITHM]
-    #     )
-    #     username = payload.get("sub")
-    #     if not username:
-    #         raise HTTPException(
-    #             status_code=401, detail="Could not validate credentials"
-    #         )
-    #     return TokenData(username=username)
-    # except JWTError:
-    #     raise HTTPException(status_code=401, detail="Could not validate credentials")
-    pass
+    try:
+        payload = jwt.decode(
+            credentials.credentials, SECRET_KEY, algorithms=[ALGORITHM]
+        )
+        username = payload.get("sub")
+        if not username:
+            raise HTTPException(
+                status_code=401, detail="Could not validate credentials"
+            )
+        return TokenData(username=username)
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Could not validate credentials")
+
 
 from datetime import datetime
 
