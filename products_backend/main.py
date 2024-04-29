@@ -114,6 +114,7 @@ def add_product(product: Product, current_user: TokenData = Depends(get_current_
         )
         connection.commit()
         product_id = cursor.lastrowid
+        
         return {**product.dict(), "product_id": product_id}
     finally:
         cursor.close()
@@ -201,6 +202,26 @@ def delete_category(
         cursor.execute("DELETE FROM categories WHERE category_id = %s", (category_id,))
         connection.commit()
         return {"message": "Category deleted successfully"}
+    finally:
+        cursor.close()
+        connection.close()
+
+
+@app.get("/api/products/get_product_by_name", response_model=ProductResponse)
+def get_product_by_name(
+    product_name: str = Query(...),
+):
+    connection = get_db_connection()
+    cursor = connection.cursor(dictionary=True)
+    try:
+        cursor.execute(
+            "SELECT p.*, c.name AS category_name FROM products p LEFT JOIN categories c ON p.category_id = c.category_id WHERE p.name = %s",
+            (product_name,),
+        )
+        product = cursor.fetchone()
+        if not product:
+            raise HTTPException(status_code=404, detail="Product not found")
+        return product
     finally:
         cursor.close()
         connection.close()
