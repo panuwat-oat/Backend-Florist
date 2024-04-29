@@ -93,30 +93,33 @@ def get_product_details(product_id: int):
 
 
 @app.post("/api/cart/add_to_cart", status_code=status.HTTP_201_CREATED)
-def add_to_cart(cart: Cart, current_user: TokenData = Depends(get_current_user)):
-    # ตรวจสอบว่า user_id นี้มีอยู่ในระบบหรือไม่ และ มี cart อยู่แล้วหรือไม่ ถ้าไม่มีให้สร้างใหม่ ถ้ามีให้เช็คว่าสินค้าที่จะเพิ่มเข้าไปมีอยู่ใน cart อยู่แล้วหรือไม่ ถ้ามีให้เพิ่มจำนวนสินค้าเข้าไป ถ้าไม่มีให้เพิ่มสินค้าเข้าไปใหม่
+def add_to_cart(cart: Cart):
     mycursor = mydb.cursor()
-    query = "SELECT * FROM carts WHERE user_id=%s"
+    # Ensure there is a cart for the user, get the cart_id
+    query = "SELECT cart_id FROM cart WHERE user_id=%s"
     mycursor.execute(query, (cart.user_id,))
-    myresult = mycursor.fetchone()
-    if myresult is None:
-        query = "INSERT INTO carts (user_id) VALUES (%s)"
+    cart_result = mycursor.fetchone()
+    if not cart_result:
+        query = "INSERT INTO cart (user_id) VALUES (%s)"
         mycursor.execute(query, (cart.user_id,))
         mydb.commit()
+        cart_id = mycursor.lastrowid  # Get the new cart_id
+    else:
+        cart_id = cart_result[0]
+
+    # Process each item in the cart
     for item in cart.items:
         query = "SELECT * FROM cart_items WHERE cart_id=%s AND product_id=%s"
-        mycursor.execute(query, (cart.user_id, item.product_id))
-        myresult = mycursor.fetchone()
-        if myresult is None:
+        mycursor.execute(query, (cart_id, item.product_id))
+        item_result = mycursor.fetchone()
+        if not item_result:
             query = "INSERT INTO cart_items (cart_id, product_id, quantity) VALUES (%s, %s, %s)"
-            mycursor.execute(query, (cart.user_id, item.product_id, item.quantity))
-            mydb.commit()
+            mycursor.execute(query, (cart_id, item.product_id, item.quantity))
         else:
-            query = (
-                "UPDATE cart_items SET quantity=%s WHERE cart_id=%s AND product_id=%s"
-            )
-            mycursor.execute(query, (item.quantity, cart.user_id, item.product_id))
-            mydb.commit()
+            query = "UPDATE cart_items SET quantity = quantity + %s WHERE cart_id = %s AND product_id = %s"
+            mycursor.execute(query, (item.quantity, cart_id, item.product_id))
+        mydb.commit()
+
     return {"message": "Added to cart successfully"}
 
 
@@ -155,6 +158,7 @@ def get_cart(
         "total_items": total_count,
         "limit": limit,
     }
+
 
 @app.delete("/api/cart/delete_cart_item")
 def delete_cart_item(
