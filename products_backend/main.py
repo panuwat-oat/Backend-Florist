@@ -1,95 +1,55 @@
-from fastapi import HTTPException
-import shutil
-from typing import Annotated, List, Optional
-from fastapi import Depends, FastAPI, File, Form, Query, Security, UploadFile
-from fastapi.security import (
-    HTTPAuthorizationCredentials,
-    HTTPBearer,
-    OAuth2PasswordBearer,
+from typing import List, Optional
+from fastapi import (
+    FastAPI,
+    HTTPException,
+    Depends,
+    File,
+    UploadFile,
+    Form,
+    Query,
+    status,
 )
-from fastapi.staticfiles import StaticFiles
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
-from fastapi import status
-
-
-# import libraries เกี่ยวกับ mysql
-from jose import JWTError, jwt  # type: ignore
-import mysql.connector  # type: ignore
-
-
-mydb = mysql.connector.connect(
-    host="mysql", user="user", password="password", database="flowerstore"
-)
-
+from fastapi.middleware.cors import CORSMiddleware
+import mysql.connector
+from jose import jwt, JWTError
+import shutil
+import os
+import requests
 
 app = FastAPI(docs_url="/api/products/docs", openapi_url="/api/products/openapi.json")
 
-from fastapi.middleware.cors import CORSMiddleware
-
-origins = ["*"]
-
+# CORS middleware setup
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-from jose import jwt, JWTError  # type: ignore
+
+# Database connection setup
+def get_db_connection():
+    try:
+        connection = mysql.connector.connect(
+            host="mysql", user="user", password="password", database="flowerstore"
+        )
+        return connection
+    except mysql.connector.Error as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
+# JWT setup
 SECRET_KEY = "florist"
 ALGORITHM = "HS256"
-
 security = HTTPBearer()
 
-# เช็คว่ามี โฟลเดอร์ images หรือไม่ ถ้าไม่มีให้สร้างโฟลเดอร์ images
-import os
 
-if not os.path.exists("images"):
-    os.makedirs("images")
-
-
-app.mount(
-    "/api/products/images",
-    app=StaticFiles(directory="images"),
-    name="images",
-)
-
-
+# Models
 class TokenData(BaseModel):
     username: str | None = None
-
-
-from jose import ExpiredSignatureError  # type: ignore
-
-
-def get_current_user(credentials: HTTPAuthorizationCredentials = Security(security)):
-    try:
-        payload = jwt.decode(
-            credentials.credentials, SECRET_KEY, algorithms=[ALGORITHM]
-        )
-        username: str = payload.get("sub")
-        if username is None:
-            raise HTTPException(
-                status_code=401, detail="Could not validate credentials"
-            )
-    except ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail="Token has expired")
-    except JWTError:
-        raise HTTPException(status_code=401, detail="Could not validate credentials")
-    return TokenData(username=username)
-
-
-class ProductResponse(BaseModel):
-    product_id: int
-    category_id: int
-    name: str
-    description: str
-    price: float
-    stock_quantity: int
-    product_image: str
 
 
 class Product(BaseModel):
@@ -98,164 +58,12 @@ class Product(BaseModel):
     description: str
     price: float
     stock_quantity: int
-    product_image: str
+    product_image: str | None = None
 
 
-@app.get("/api/products/get_products")
-def get_products(
-    category_id: Optional[int] = None,
-    page: int = 1,
-    limit: int = 10,
-):
-    mycursor = mydb.cursor()
-
-    # Modified query to include category name
-    query = """
-    SELECT p.*, c.name AS category_name 
-    FROM products p 
-    LEFT JOIN categories c ON p.category_id = c.category_id
-    """
-    
-    if category_id is not None:
-        query += " WHERE p.category_id=%s"
-        query += " LIMIT %s OFFSET %s"
-        mycursor.execute(query, (category_id, limit, (page - 1) * limit))
-    else:
-        query += " LIMIT %s OFFSET %s"
-        mycursor.execute(query, (limit, (page - 1) * limit))
-    myresult = mycursor.fetchall()
-
-    products = [
-        {
-            "product_id": product[0],
-            "category_id": product[1],
-            "category_name": product[7],  # Category name is now fetched from index 7
-            "name": product[2],
-            "description": product[3],
-            "price": product[4],
-            "stock_quantity": product[5],
-            "product_image": product[6],
-        }
-        for product in myresult
-    ]
-
-    # Get total count of items in the products table
-    if category_id is not None:
-        mycursor.execute(
-            "SELECT COUNT(*) FROM products WHERE category_id=%s", (category_id,)
-        )
-    else:
-        mycursor.execute("SELECT COUNT(*) FROM products")
-    total_count = mycursor.fetchone()[0]
-    total_pages = (total_count + limit - 1) // limit
-
-    return {
-        "items": products,
-        "current_page": page,
-        "total_pages": total_pages,
-        "total_items": total_count,
-        "limit": limit,
-    }
-    
-#get product by product_id
-@app.get("/api/products/get_product_by_id")
-def get_product_by_id(product_id: int = Query(...)):
-    mycursor = mydb.cursor()
-    query = "SELECT * FROM products WHERE product_id = %s"
-    mycursor.execute(query, (product_id,))
-    myresult = mycursor.fetchone()
-    categoryCursor = mydb.cursor()
-    categoryCursor.execute("SELECT name FROM categories WHERE category_id = %s", (myresult[1],))
-    category = categoryCursor.fetchone()
-    if myresult is None:
-        raise HTTPException(status_code=404, detail="Product not found")
-    product = {
-        "product_id": myresult[0],
-        "category_id": myresult[1],
-        "category_name": category[0],
-        "name": myresult[2],
-        "description": myresult[3],
-        "price": myresult[4],
-        "stock_quantity": myresult[5],
-        "product_image": myresult[6],
-    }
-    return product
-
-#get product by product_name
-@app.get("/api/products/get_product_by_name")
-def get_product_by_name(product_name: str = Query(...)):
-    mycursor = mydb.cursor()
-    query = "SELECT * FROM products WHERE name = %s"
-    mycursor.execute(query, (product_name,))
-    myresult = mycursor.fetchone()
-    categoryCursor = mydb.cursor()
-    categoryCursor.execute("SELECT name FROM categories WHERE category_id = %s", (myresult[1],))
-    category = categoryCursor.fetchone()
-    if myresult is None:
-        raise HTTPException(status_code=404, detail="Product not found")
-    product = {
-        "product_id": myresult[0],
-        "category_id": myresult[1],
-        "category_name": category[0],
-        "name": myresult[2],
-        "description": myresult[3],
-        "price": myresult[4],
-        "stock_quantity": myresult[5],
-        "product_image": myresult[6],
-    }
-    return product
-
-
-
-# post new product with better error handling and status codes
-@app.post("/api/products/add_product", status_code=status.HTTP_201_CREATED)
-def add_product(product: Product, current_user: TokenData = Depends(get_current_user)):
-
-    try:
-        mycursor = mydb.cursor()
-        sql = "INSERT INTO products (category_id, name, description, price, stock_quantity, product_image) VALUES (%s, %s, %s, %s, %s, %s)"
-        values = (
-            product.category_id,
-            product.name,
-            product.description,
-            product.price,
-            product.stock_quantity,
-            product.product_image,
-        )
-        mycursor.execute(sql, values)
-        mydb.commit()
-        return {
-            "message": "Product added successfully",
-            "product_id": mycursor.lastrowid,
-        }
-    except Exception as e:
-        mydb.rollback()
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@app.post("/api/products/add_product_image")
-def add_product_image(
-    file: UploadFile = File(...),
-    product_id: int = Form(...),
-    current_user: TokenData = Depends(get_current_user),
-):
-    try:
-        # อัพโหลดไฟล์ไปยัง server
-        # Note: You might want to add validation to check file content type, etc.
-        file_location = f"images/{product_id}.jpg"
-        with open(file_location, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-        # อัพเดท product_image ในตาราง products
-        mycursor = mydb.cursor()
-        sql = "UPDATE products SET product_image = %s WHERE product_id = %s"
-        file_location = f"api/products/images/{product_id}.jpg"
-        values = (file_location, product_id)
-        mycursor.execute(sql, values)
-        mydb.commit()
-
-        return {"message": "Image uploaded successfully", "file_path": file_location}
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+class ProductResponse(Product):
+    product_id: int
+    category_name: str | None = None
 
 
 class Category(BaseModel):
@@ -267,98 +75,132 @@ class CategoryResponse(BaseModel):
     name: str
 
 
+# Security dependency
+def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    try:
+        payload = jwt.decode(
+            credentials.credentials, SECRET_KEY, algorithms=[ALGORITHM]
+        )
+        username = payload.get("sub")
+        if not username:
+            raise HTTPException(
+                status_code=401, detail="Could not validate credentials"
+            )
+        return TokenData(username=username)
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Could not validate credentials")
+
+
+# Endpoints
+@app.post(
+    "/api/products/add_product",
+    response_model=ProductResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def add_product(product: Product, current_user: TokenData = Depends(get_current_user)):
+    connection = get_db_connection()
+    cursor = connection.cursor()
+    try:
+        cursor.execute(
+            "INSERT INTO products (category_id, name, description, price, stock_quantity, product_image) VALUES (%s, %s, %s, %s, %s, %s)",
+            (
+                product.category_id,
+                product.name,
+                product.description,
+                product.price,
+                product.stock_quantity,
+                product.product_image,
+            ),
+        )
+        connection.commit()
+        product_id = cursor.lastrowid
+        return {**product.dict(), "product_id": product_id}
+    finally:
+        cursor.close()
+        connection.close()
+
+
+@app.get("/api/products/get_products", response_model=List[ProductResponse])
+def get_products(category_id: Optional[int] = None):
+    connection = get_db_connection()
+    cursor = connection.cursor(dictionary=True)
+    try:
+        query = "SELECT p.*, c.name AS category_name FROM products p LEFT JOIN categories c ON p.category_id = c.category_id"
+        if category_id:
+            cursor.execute(query + " WHERE p.category_id = %s", (category_id,))
+        else:
+            cursor.execute(query)
+        return cursor.fetchall()
+    finally:
+        cursor.close()
+        connection.close()
+
+
+@app.post("/api/products/add_product_image")
+def add_product_image(
+    file: UploadFile = File(...),
+    product_id: int = Form(...),
+    current_user: TokenData = Depends(get_current_user),
+):
+    file_location = f"images/{product_id}.jpg"
+    with open(file_location, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+    connection = get_db_connection()
+    cursor = connection.cursor()
+    try:
+        cursor.execute(
+            "UPDATE products SET product_image = %s WHERE product_id = %s",
+            (f"api/products/images/{product_id}.jpg", product_id),
+        )
+        connection.commit()
+        return {"message": "Image uploaded successfully", "file_path": file_location}
+    finally:
+        cursor.close()
+        connection.close()
+
+
 @app.get("/api/products/get_all_categories", response_model=List[CategoryResponse])
 def get_all_categories():
-    mycursor = mydb.cursor()
-    mycursor.execute("SELECT * FROM categories")
-    myresult = mycursor.fetchall()
-    # Convert tuple results to dictionary format expected by the Pydantic model
-    categories = [
-        {"category_id": category[0], "name": category[1]} for category in myresult
-    ]
-    return categories
+    connection = get_db_connection()
+    cursor = connection.cursor(dictionary=True)
+    try:
+        cursor.execute("SELECT * FROM categories")
+        return cursor.fetchall()
+    finally:
+        cursor.close()
+        connection.close()
 
 
-@app.post("/api/products/add_category")
+@app.post(
+    "/api/products/add_category",
+    response_model=CategoryResponse,
+    status_code=status.HTTP_201_CREATED,
+)
 def add_category(
     category: Category, current_user: TokenData = Depends(get_current_user)
 ):
+    connection = get_db_connection()
+    cursor = connection.cursor()
     try:
-        mycursor = mydb.cursor()
-        sql = "INSERT INTO categories (name) VALUES (%s)"
-        values = (category.name,)
-        mycursor.execute(sql, values)
-        mydb.commit()
-        return {"message": "Category added successfully"}
-    except Exception as e:
-        mydb.rollback()
-        raise HTTPException(status_code=400, detail=str(e))
+        cursor.execute("INSERT INTO categories (name) VALUES (%s)", (category.name,))
+        connection.commit()
+        category_id = cursor.lastrowid
+        return {**category.dict(), "category_id": category_id}
+    finally:
+        cursor.close()
+        connection.close()
 
 
-# delete category
-@app.delete("/api/products/delete_category")
+@app.delete("/api/products/delete_category", status_code=status.HTTP_204_NO_CONTENT)
 def delete_category(
-    category_id: int = Query(...), current_user: TokenData = Depends(get_current_user)
+    category_id: int, current_user: TokenData = Depends(get_current_user)
 ):
+    connection = get_db_connection()
+    cursor = connection.cursor()
     try:
-        mycursor = mydb.cursor()
-        sql = "DELETE FROM categories WHERE category_id = %s"
-        mycursor.execute(sql, (category_id,))
-        mydb.commit()
+        cursor.execute("DELETE FROM categories WHERE category_id = %s", (category_id,))
+        connection.commit()
         return {"message": "Category deleted successfully"}
-    except Exception as e:
-        mydb.rollback()
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-import requests
-import IPython
-
-
-# get products description with text to speech
-@app.get("/api/products/get_product_description_tts")
-def get_product_description_tts(
-    product_id: int = Query(...),
-):
-    mycursor = mydb.cursor()
-    query = "SELECT description FROM products WHERE product_id = %s"
-    mycursor.execute(query, (product_id,))
-    myresult = mycursor.fetchone()
-    if myresult is None:
-        raise HTTPException(status_code=404, detail="Product not found")
-    description = myresult[0]
-
-    # Define the path for the audio file
-    audio_file_path = f"images/product_{product_id}_audio.wav"
-
-    # Check if the audio file already exists
-    if os.path.exists(audio_file_path):
-        return {"message": "Audio already generated", "file_path": audio_file_path}
-
-    # API key for the text-to-speech service
-    Apikey = "NMhdHNIpPJpc0nUKcn1asmqIPBqUuT9I"
-
-    # Text-to-speech synthesis
-    url = "https://api.aiforthai.in.th/vaja9/synth_audiovisual"
-    headers = {"Apikey": Apikey, "Content-Type": "application/json"}
-    data = {
-        "input_text": description,
-        "speaker": 1,
-        "phrase_break": 0,
-        "audiovisual": 0,
-    }
-    response = requests.post(url, json=data, headers=headers)
-
-    # Check the response
-    if response.status_code != 200 or "wav_url" not in response.json():
-        raise HTTPException(status_code=500, detail="Failed to generate audio")
-
-    # Download the audio file
-    audio_url = response.json()["wav_url"]
-    resp = requests.get(audio_url, headers={"Apikey": Apikey})
-    if resp.status_code == 200:
-        with open(audio_file_path, "wb") as f:
-            f.write(resp.content)
-        return {"message": "Audio generated successfully", "file_path": audio_file_path}
-    else:
-        raise HTTPException(status_code=500, detail="Failed to download audio")
+    finally:
+        cursor.close()
+        connection.close()
