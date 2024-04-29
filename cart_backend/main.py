@@ -93,7 +93,7 @@ def get_product_details(product_id: int):
 
 
 @app.post("/api/cart/add_to_cart", status_code=status.HTTP_201_CREATED)
-def add_to_cart(cart: Cart):
+def add_to_cart(cart: Cart ,  current_user: TokenData = Depends(get_current_user):
     mycursor = mydb.cursor()
     # Ensure there is a cart for the user, get the cart_id
     query = "SELECT cart_id FROM cart WHERE user_id=%s"
@@ -127,7 +127,8 @@ def add_to_cart(cart: Cart):
 def get_cart(
     user_id: int,
     page: int = 1,
-    limit: int = 10,
+    limit: int = 10, 
+    current_user: TokenData = Depends(get_current_user)
 ):
     mycursor = mydb.cursor(dictionary=True)
     query = """
