@@ -1,33 +1,14 @@
-from typing import Annotated, List, Optional
-from fastapi import Depends, FastAPI, HTTPException, Header, Security
-from fastapi.security import (
-    HTTPAuthorizationCredentials,
-    HTTPBearer,
-    OAuth2,
-    OAuth2AuthorizationCodeBearer,
-    OAuth2PasswordBearer,
-    OAuth2PasswordRequestForm,
-)
-import httpx
-from pydantic import BaseModel
-from fastapi import status
+from typing import List
+from fastapi import Depends, FastAPI, HTTPException
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+import mysql.connector
 from jose import jwt, JWTError  # type: ignore
-import requests
-
-# import libraries เกี่ยวกับ mysql
-import mysql.connector  # type: ignore
-
-
-mydb = mysql.connector.connect(
-    host="mysql", user="user", password="password", database="flowerstore"
-)
-
-
-app = FastAPI(docs_url="/api/addresses/docs", openapi_url="/api/addresses/openapi.json")
+from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 
-origins = ["*"]
+app = FastAPI(docs_url="/api/addresses/docs", openapi_url="/api/addresses/openapi.json")
 
+origins = ["*"]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
@@ -35,6 +16,15 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+mydb = mysql.connector.connect(
+    host="mysql", user="user", password="password", database="flowerstore"
+)
+mycursor = mydb.cursor(dictionary=True)
+
+SECRET_KEY = "florist"
+ALGORITHM = "HS256"
+security = HTTPBearer()
 
 
 class TokenData(BaseModel):
@@ -62,13 +52,7 @@ class AddressResponse(BaseModel):
     is_current: bool
 
 
-SECRET_KEY = "florist"
-ALGORITHM = "HS256"
-
-security = HTTPBearer()
-
-
-def get_current_user(credentials: HTTPAuthorizationCredentials = Security(security)):
+def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
     try:
         payload = jwt.decode(
             credentials.credentials, SECRET_KEY, algorithms=[ALGORITHM]
@@ -78,36 +62,25 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Security(securi
             raise HTTPException(
                 status_code=401, detail="Could not validate credentials"
             )
-        token_data = TokenData(username=username)
+        return TokenData(username=username)
     except JWTError:
         raise HTTPException(status_code=401, detail="Could not validate credentials")
-    return token_data
 
 
-@app.post(
-    "/api/addresses/add_address",
-    response_model=AddressResponse,
-    status_code=status.HTTP_201_CREATED,
-)
+@app.post("/api/addresses/add_address", response_model=AddressResponse, status_code=201)
 def add_address(address: Address, current_user: TokenData = Depends(get_current_user)):
-    mycursor = mydb.cursor()
-    # Check if user exists
-    mycursor.execute("SELECT * FROM users WHERE user_id=%s", (address.user_id,))
-    if mycursor.fetchone() is None:
+    mycursor.execute("SELECT * FROM users WHERE user_id = %s", (address.user_id,))
+    if not mycursor.fetchone():
         raise HTTPException(status_code=404, detail="User not found")
-
-    # Check if there is already a current address and unset it
     mycursor.execute(
-        "SELECT * FROM addresses WHERE user_id=%s AND is_current=True",
+        "SELECT * FROM addresses WHERE user_id = %s AND is_current = True",
         (address.user_id,),
     )
-    if mycursor.fetchone() is not None:
+    if mycursor.fetchone():
         mycursor.execute(
-            "UPDATE addresses SET is_current=False WHERE user_id=%s", (address.user_id,)
+            "UPDATE addresses SET is_current = False WHERE user_id = %s",
+            (address.user_id,),
         )
-        mydb.commit()
-
-    # Insert new address
     mycursor.execute(
         "INSERT INTO addresses (user_id, address, city, state, zip_code, country, is_current) VALUES (%s, %s, %s, %s, %s, %s, %s)",
         (
@@ -121,33 +94,17 @@ def add_address(address: Address, current_user: TokenData = Depends(get_current_
         ),
     )
     mydb.commit()
-    address_id = mycursor.lastrowid  # Get the ID of the newly inserted row
-
-    return AddressResponse(
-        address_id=address_id,
-        user_id=address.user_id,
-        address=address.address,
-        city=address.city,
-        state=address.state,
-        zip_code=address.zip_code,
-        country=address.country,
-        is_current=address.is_current,
-    )
+    return AddressResponse(address_id=mycursor.lastrowid, **address.dict())
 
 
 @app.get(
-    "/api/addresses/get_addresses_by_user_id",
-    response_model=List[AddressResponse],
+    "/api/addresses/get_addresses_by_user_id", response_model=List[AddressResponse]
 )
 def get_addresses_by_user_id(
     user_id: int, current_user: TokenData = Depends(get_current_user)
 ):
-    # ดึงข้อมูล address ทั้งหมดของ user_id นี้ออกมา
-    mycursor = mydb.cursor()
-    query = "SELECT * FROM addresses WHERE user_id=%s"
-    mycursor.execute(query, (user_id,))
-    myresult = mycursor.fetchall()
-    return myresult
+    mycursor.execute("SELECT * FROM addresses WHERE user_id = %s", (user_id,))
+    return [AddressResponse(**address) for address in mycursor.fetchall()]
 
 
 @app.get(
@@ -156,91 +113,68 @@ def get_addresses_by_user_id(
 def get_current_address_by_user_id(
     user_id: int, current_user: TokenData = Depends(get_current_user)
 ):
-    # ดึงข้อมูล address ที่เป็น current ของ user_id นี้ออกมา
-    mycursor = mydb.cursor()
-    query = "SELECT * FROM addresses WHERE user_id=%s AND is_current=True"
-    mycursor.execute(query, (user_id,))
-    myresult = mycursor.fetchone()
-    return myresult
+    mycursor.execute(
+        "SELECT * FROM addresses WHERE user_id = %s AND is_current = True", (user_id,)
+    )
+    address = mycursor.fetchone()
+    if address is None:
+        raise HTTPException(status_code=404, detail="No current address found")
+    return AddressResponse(**address)
 
 
-# แก้ไขข้อมูลที่อยู่ด้วย address_id
 @app.put("/api/addresses/edit_address_by_address_id", response_model=AddressResponse)
 def edit_address_by_address_id(
     address_id: int,
     address: Address,
     current_user: TokenData = Depends(get_current_user),
 ):
-    # ตรวจสอบว่า address_id นี้มีอยู่ในระบบหรือไม่ ถ้าไม่มีให้ return HTTPException 404
-    # ตรวจสอบว่า user_id ของ address_id นี้ตรงกับ user_id ที่ส่งมาหรือไม่ ถ้าไม่ตรงให้ return HTTPException 403
-    # แก้ไขข้อมูล address ที่มี address_id นี้
-    mycursor = mydb.cursor()
-    query = "SELECT * FROM addresses WHERE address_id=%s"
-    mycursor.execute(query, (address_id,))
-    myresult = mycursor.fetchone()
-    if myresult is None:
+    mycursor.execute("SELECT * FROM addresses WHERE address_id = %s", (address_id,))
+    existing_address = mycursor.fetchone()
+    if not existing_address:
         raise HTTPException(status_code=404, detail="Address not found")
-    if myresult[1] != address.user_id:
-        raise HTTPException(status_code=403, detail="Forbidden")
-    query = "UPDATE addresses SET address=%s, city=%s, state=%s, zip_code=%s, country=%s, is_current=%s WHERE address_id=%s"
     mycursor.execute(
-        query,
+        "UPDATE addresses SET address = %s, city = %s, state = %s, zip_code = %s, country = %s WHERE address_id = %s",
         (
             address.address,
             address.city,
             address.state,
             address.zip_code,
             address.country,
-            address.is_current,
             address_id,
         ),
     )
     mydb.commit()
-    return address
+    return AddressResponse(**{**existing_address, **address.dict()})
 
 
-# ลบข้อมูลที่อยู่ด้วย address_id
-@app.delete(
-    "/api/addresses/delete_address_by_address_id",
-    status_code=status.HTTP_204_NO_CONTENT,
-)
+@app.delete("/api/addresses/delete_address_by_address_id", status_code=204)
 def delete_address_by_address_id(
     address_id: int, current_user: TokenData = Depends(get_current_user)
 ):
-    # ตรวจสอบว่า address_id นี้มีอยู่ในระบบหรือไม่ ถ้าไม่มีให้ return HTTPException 404
-    # ลบข้อมูล address ที่มี address_id นี้
-    mycursor = mydb.cursor()
-    query = "SELECT * FROM addresses WHERE address_id=%s"
-    mycursor.execute(query, (address_id,))
-    myresult = mycursor.fetchone()
-    if myresult is None:
+    mycursor.execute("SELECT * FROM addresses WHERE address_id = %s", (address_id,))
+    if not mycursor.fetchone():
         raise HTTPException(status_code=404, detail="Address not found")
-    query = "DELETE FROM addresses WHERE address_id=%s"
-    mycursor.execute(query, (address_id,))
+    mycursor.execute("DELETE FROM addresses WHERE address_id = %s", (address_id,))
     mydb.commit()
     return {"message": "Deleted successfully"}
 
 
-# ตั้งค่า address ที่เป็น current ด้วย address_id
 @app.put(
     "/api/addresses/set_current_address_by_address_id", response_model=AddressResponse
 )
 def set_current_address_by_address_id(
     address_id: int, current_user: TokenData = Depends(get_current_user)
 ):
-    # ตรวจสอบว่า address_id นี้มีอยู่ในระบบหรือไม่ ถ้าไม่มีให้ return HTTPException 404
-    mycursor = mydb.cursor()
-    query = "SELECT * FROM addresses WHERE address_id=%s"
-    mycursor.execute(query, (address_id,))
-    myresult = mycursor.fetchone()
-    if myresult is None:
+    mycursor.execute("SELECT * FROM addresses WHERE address_id = %s", (address_id,))
+    address = mycursor.fetchone()
+    if not address:
         raise HTTPException(status_code=404, detail="Address not found")
-    # ตรวจสอบว่ามี address ที่เป็น current อยู่แล้วหรือไม่ ถ้ามีให้เปลี่ยนเป็นไม่ใช่
-    query = "UPDATE addresses SET is_current=False WHERE user_id=%s"
-    mycursor.execute(query, (myresult[1],))
+    mycursor.execute(
+        "UPDATE addresses SET is_current = False WHERE user_id = %s",
+        (address["user_id"],),
+    )
+    mycursor.execute(
+        "UPDATE addresses SET is_current = True WHERE address_id = %s", (address_id,)
+    )
     mydb.commit()
-    # ตั้งค่า address ที่เป็น current ด้วย address_id
-    query = "UPDATE addresses SET is_current=True WHERE address_id=%s"
-    mycursor.execute(query, (address_id,))
-    mydb.commit()
-    return myresult
+    return AddressResponse(**address)
