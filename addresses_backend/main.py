@@ -1,4 +1,3 @@
-
 from typing import Annotated, List, Optional
 from fastapi import Depends, FastAPI, HTTPException, Header, Security
 from fastapi.security import (
@@ -37,6 +36,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 class TokenData(BaseModel):
     username: str | None = None
 
@@ -48,7 +48,7 @@ class Address(BaseModel):
     state: str
     zip_code: str
     country: str
-    is_current: bool
+    is_current: bool = True
 
 
 class AddressResponse(BaseModel):
@@ -90,25 +90,26 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Security(securi
     status_code=status.HTTP_201_CREATED,
 )
 def add_address(address: Address, current_user: TokenData = Depends(get_current_user)):
-    # เช็คว่า user_id นี้มีอยู่ในระบบหรือไม่ ถ้าไม่มีให้ return HTTPException 404
-    # เช็คว่ามี address ที่เป็น current อยู่แล้วหรือไม่ ถ้ามีให้เปลี่ยนเป็นไม่ใช่
-    # เพิ่ม address ใหม่เข้าไป
     mycursor = mydb.cursor()
-    query = "SELECT * FROM users WHERE user_id=%s"
-    mycursor.execute(query, (address.user_id,))
-    myresult = mycursor.fetchone()
-    if myresult is None:
+    # Check if user exists
+    mycursor.execute("SELECT * FROM users WHERE user_id=%s", (address.user_id,))
+    if mycursor.fetchone() is None:
         raise HTTPException(status_code=404, detail="User not found")
-    query = "SELECT * FROM addresses WHERE user_id=%s AND is_current=True"
-    mycursor.execute(query, (address.user_id,))
-    myresult = mycursor.fetchone()
-    if myresult is not None:
-        query = "UPDATE addresses SET is_current=False WHERE user_id=%s"
-        mycursor.execute(query, (address.user_id,))
-        mydb.commit()
-    query = "INSERT INTO addresses (user_id, address, city, state, zip_code, country, is_current) VALUES (%s, %s, %s, %s, %s, %s, %s)"
+
+    # Check if there is already a current address and unset it
     mycursor.execute(
-        query,
+        "SELECT * FROM addresses WHERE user_id=%s AND is_current=True",
+        (address.user_id,),
+    )
+    if mycursor.fetchone() is not None:
+        mycursor.execute(
+            "UPDATE addresses SET is_current=False WHERE user_id=%s", (address.user_id,)
+        )
+        mydb.commit()
+
+    # Insert new address
+    mycursor.execute(
+        "INSERT INTO addresses (user_id, address, city, state, zip_code, country, is_current) VALUES (%s, %s, %s, %s, %s, %s, %s)",
         (
             address.user_id,
             address.address,
@@ -120,7 +121,18 @@ def add_address(address: Address, current_user: TokenData = Depends(get_current_
         ),
     )
     mydb.commit()
-    return address
+    address_id = mycursor.lastrowid  # Get the ID of the newly inserted row
+
+    return AddressResponse(
+        address_id=address_id,
+        user_id=address.user_id,
+        address=address.address,
+        city=address.city,
+        state=address.state,
+        zip_code=address.zip_code,
+        country=address.country,
+        is_current=address.is_current,
+    )
 
 
 @app.get(
@@ -129,7 +141,7 @@ def add_address(address: Address, current_user: TokenData = Depends(get_current_
 )
 def get_addresses_by_user_id(
     user_id: int, current_user: TokenData = Depends(get_current_user)
-):    
+):
     # ดึงข้อมูล address ทั้งหมดของ user_id นี้ออกมา
     mycursor = mydb.cursor()
     query = "SELECT * FROM addresses WHERE user_id=%s"
@@ -140,7 +152,6 @@ def get_addresses_by_user_id(
 
 @app.get(
     "/api/addresses/get_current_address_by_user_id", response_model=AddressResponse
-    
 )
 def get_current_address_by_user_id(
     user_id: int, current_user: TokenData = Depends(get_current_user)
