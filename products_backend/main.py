@@ -108,9 +108,16 @@ def get_products(
     limit: int = 10,
 ):
     mycursor = mydb.cursor()
-    query = "SELECT * FROM products"
+
+    # Modified query to include category name
+    query = """
+    SELECT p.*, c.name AS category_name 
+    FROM products p 
+    LEFT JOIN categories c ON p.category_id = c.category_id
+    """
+    
     if category_id is not None:
-        query += " WHERE category_id=%s"
+        query += " WHERE p.category_id=%s"
         query += " LIMIT %s OFFSET %s"
         mycursor.execute(query, (category_id, limit, (page - 1) * limit))
     else:
@@ -122,6 +129,7 @@ def get_products(
         {
             "product_id": product[0],
             "category_id": product[1],
+            "category_name": product[7],  # Category name is now fetched from index 7
             "name": product[2],
             "description": product[3],
             "price": product[4],
@@ -148,6 +156,55 @@ def get_products(
         "total_items": total_count,
         "limit": limit,
     }
+    
+#get product by product_id
+@app.get("/api/products/get_product_by_id")
+def get_product_by_id(product_id: int = Query(...)):
+    mycursor = mydb.cursor()
+    query = "SELECT * FROM products WHERE product_id = %s"
+    mycursor.execute(query, (product_id,))
+    myresult = mycursor.fetchone()
+    categoryCursor = mydb.cursor()
+    categoryCursor.execute("SELECT name FROM categories WHERE category_id = %s", (myresult[1],))
+    category = categoryCursor.fetchone()
+    if myresult is None:
+        raise HTTPException(status_code=404, detail="Product not found")
+    product = {
+        "product_id": myresult[0],
+        "category_id": myresult[1],
+        "category_name": category[0],
+        "name": myresult[2],
+        "description": myresult[3],
+        "price": myresult[4],
+        "stock_quantity": myresult[5],
+        "product_image": myresult[6],
+    }
+    return product
+
+#get product by product_name
+@app.get("/api/products/get_product_by_name")
+def get_product_by_name(product_name: str = Query(...)):
+    mycursor = mydb.cursor()
+    query = "SELECT * FROM products WHERE name = %s"
+    mycursor.execute(query, (product_name,))
+    myresult = mycursor.fetchone()
+    categoryCursor = mydb.cursor()
+    categoryCursor.execute("SELECT name FROM categories WHERE category_id = %s", (myresult[1],))
+    category = categoryCursor.fetchone()
+    if myresult is None:
+        raise HTTPException(status_code=404, detail="Product not found")
+    product = {
+        "product_id": myresult[0],
+        "category_id": myresult[1],
+        "category_name": category[0],
+        "name": myresult[2],
+        "description": myresult[3],
+        "price": myresult[4],
+        "stock_quantity": myresult[5],
+        "product_image": myresult[6],
+    }
+    return product
+
 
 
 # post new product with better error handling and status codes
