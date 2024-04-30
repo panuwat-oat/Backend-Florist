@@ -202,7 +202,7 @@ class OrderStatus(BaseModel):
 
 @app.put("/api/orders/edit_order_status", response_model=OrderResponse)
 def edit_order_status(
-    order_status: OrderStatus,
+    order_status: OrderStatus, current_user: TokenData = Depends(get_current_user)
 ):
     cursor = mydb.cursor(dictionary=True)
     cursor.execute(
