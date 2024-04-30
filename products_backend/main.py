@@ -313,4 +313,5 @@ def get_product_description_tts(
         return {
             "message": "Failed to generate audio",
             "message_form_api": resp.json(),
+            "reason": resp.reason,
         }
