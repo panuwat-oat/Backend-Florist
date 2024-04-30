@@ -1,4 +1,5 @@
 from typing import List, Optional
+import IPython
 from fastapi import (
     FastAPI,
     HTTPException,
@@ -272,10 +273,13 @@ def get_product_by_name(
 def get_product_description_tts(
     product_id: int = Query(...),
 ):
-    mycursor = mydb.cursor()
-    query = "SELECT description FROM products WHERE product_id = %s"
-    mycursor.execute(query, (product_id,))
-    myresult = mycursor.fetchone()
+    connection = get_db_connection()
+    cursor = connection.cursor()
+    cursor.execute(
+        "SELECT description FROM products WHERE product_id = %s", (product_id,)
+    )
+    myresult = cursor.fetchone()
+
     if myresult is None:
         raise HTTPException(status_code=404, detail="Product not found")
     description = myresult[0]
@@ -287,30 +291,26 @@ def get_product_description_tts(
     if os.path.exists(audio_file_path):
         return {"message": "Audio already generated", "file_path": audio_file_path}
 
-    # API key for the text-to-speech service
+    # ระบุ api key
+
     Apikey = "NMhdHNIpPJpc0nUKcn1asmqIPBqUuT9I"
 
-    # Text-to-speech synthesis
+    # สังเคราะห์เสียง
     url = "https://api.aiforthai.in.th/vaja9/synth_audiovisual"
     headers = {"Apikey": Apikey, "Content-Type": "application/json"}
-    data = {
-        "input_text": description,
-        "speaker": 1,
-        "phrase_break": 0,
-        "audiovisual": 0,
-    }
+    text = description
+    data = {"input_text": text, "speaker": 1, "phrase_break": 0, "audiovisual": 0}
     response = requests.post(url, json=data, headers=headers)
+    print(response.json())
 
-    # Check the response
-    if response.status_code != 200 or "wav_url" not in response.json():
-        raise HTTPException(status_code=500, detail="Failed to generate audio")
-
-    # Download the audio file
-    audio_url = response.json()["wav_url"]
-    resp = requests.get(audio_url, headers={"Apikey": Apikey})
+    # ดาวน์โหลดไฟล์เสียง
+    resp = requests.get(response.json()["wav_url"], headers={"Apikey": Apikey})
     if resp.status_code == 200:
         with open(audio_file_path, "wb") as f:
             f.write(resp.content)
         return {"message": "Audio generated successfully", "file_path": audio_file_path}
     else:
-        raise HTTPException(status_code=500, detail="Failed to download audio")
+        return {
+            "message": "Failed to generate audio",
+            "message_form_api": resp.json(),
+        }
