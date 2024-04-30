@@ -195,13 +195,19 @@ def get_order_by_user_id(
     return orders
 
 
+class OrderStatus(BaseModel):
+    order_id: int
+    status: str
+
+
 @app.put("/api/orders/edit_order_status", response_model=OrderResponse)
 def edit_order_status(
-    order_id: int, status: str, current_user: TokenData = Depends(get_current_user)
+    order_status: OrderStatus,
 ):
     cursor = mydb.cursor(dictionary=True)
     cursor.execute(
-        "UPDATE orders SET status = %s WHERE order_id = %s", (status, order_id)
+        "UPDATE orders SET status = %s WHERE order_id = %s",
+        (order_status.status, order_status.order_id),
     )
     mydb.commit()
-    return fetch_order_details(cursor, order_id)
+    return fetch_order_details(cursor, order_status.order_id)

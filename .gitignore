@@ -3,3 +3,4 @@
 /auth_backend/__pycache__
 /auth_backend/__pycache__
 *.pyc
+/cart_backend/__pycache__
