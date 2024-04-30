@@ -308,7 +308,10 @@ def get_product_description_tts(
     if resp.status_code == 200:
         with open(audio_file_path, "wb") as f:
             f.write(resp.content)
-        return {"message": "Audio generated successfully", "file_path": audio_file_path}
+        return {
+            "message": "Audio generated successfully",
+            "file_path": f"api/products/{audio_file_path}",
+        }
     else:
         return {
             "message": "Failed to generate audio",
