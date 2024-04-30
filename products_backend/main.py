@@ -289,7 +289,10 @@ def get_product_description_tts(
 
     # Check if the audio file already exists
     if os.path.exists(audio_file_path):
-        return {"message": "Audio already generated", "file_path": audio_file_path}
+        return {
+            "message": "Audio already generated",
+            "file_path": f"api/products/{audio_file_path}",
+        }
 
     # ระบุ api key
 
