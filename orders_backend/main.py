@@ -195,7 +195,7 @@ def get_order_by_user_id(
     return orders
 
 
-@app.put("/api/orders/edit_order_status", response_model=dict)
+@app.put("/api/orders/edit_order_status", response_model=OrderResponse)
 def edit_order_status(
     order_id: int, status: str, current_user: TokenData = Depends(get_current_user)
 ):
